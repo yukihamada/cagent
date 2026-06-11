@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="ローカルLLM(Qwen3.6)がbim.houseのMCPでバルセロナ・パビリオンを設計し、自己採点ループで再現度77点から93点まで改善した全記録。">
+<title>ローカルLLM、バルセロナ・パビリオンを建てる — 自己採点ループ全記録</title>
+<style>
+:root{--bg:#0d1117;--bg2:#161b22;--tx:#e6edf3;--tx2:#8b949e;--ac:#58a6ff;--ok:#3fb950;--ng:#f85149;--bd:#30363d}
+@media(prefers-color-scheme:light){:root{--bg:#fff;--bg2:#f6f8fa;--tx:#1f2328;--tx2:#656d76;--bd:#d0d7de}}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);color:var(--tx);line-height:1.7;padding:40px 20px;max-width:860px;margin:0 auto}
+h1{font-size:clamp(1.4rem,4vw,2rem);margin-bottom:8px}
+.sub{color:var(--tx2);margin-bottom:32px;font-size:.95rem}
+.timeline{position:relative;padding-left:28px}
+.timeline::before{content:'';position:absolute;left:8px;top:0;bottom:0;width:2px;background:var(--bd)}
+.ev{position:relative;margin-bottom:28px;background:var(--bg2);border:1px solid var(--bd);border-radius:10px;padding:16px 18px}
+.ev::before{content:'';position:absolute;left:-26px;top:22px;width:12px;height:12px;border-radius:50%;background:var(--ac);border:2px solid var(--bg)}
+.ev.fail::before{background:var(--ng)}
+.ev.win::before{background:var(--ok)}
+.t{font-family:monospace;font-size:.8rem;color:var(--tx2)}
+.ev h2{font-size:1.05rem;margin:4px 0 6px}
+.ev p{color:var(--tx2);font-size:.9rem}
+.score{font-family:monospace;font-size:.85rem;margin-top:8px;color:var(--ac)}
+.win .score{color:var(--ok)}
+a{color:var(--ac);text-decoration:none}
+a:hover{text-decoration:underline}
+.cta{display:inline-block;margin-top:24px;background:var(--ac);color:#fff;padding:10px 22px;border-radius:8px;font-weight:600}
+footer{margin-top:40px;color:var(--tx2);font-size:.8rem;border-top:1px solid var(--bd);padding-top:16px}
+</style>
+</head>
+<body>
+<h1>ローカルLLM、バルセロナ・パビリオンを建てる</h1>
+<p class="sub">2026-06-11 — Qwen3.6-35B (m5 Mac・完全ローカル) が C製エージェント <a href="https://github.com/yukihamada/cagent">cagent</a> で bim.house の MCP を叩き、ミースの名作を設計→自己検収→自己採点→修正。法規13/13 PASS・再現度93点までの全記録。</p>
+
+<div class="timeline">
+<div class="ev"><span class="t">11:28</span><h2>設計開始</h2><p>トラバーチン基壇・平屋根・クロム十字柱8本・オニキス壁・大小水盤、35要素を3回に分けて生成。途中、画像学習ジョブとGPU取り合いで2 tok/sまで劣化→学習を一時停止して回復。</p></div>
+<div class="ev fail"><span class="t">12:50</span><h2>v1: 3mの箱が建つ</h2><p>create_house は成功したが、要素を自己流スキーマ(length/width/thickness)で書いたためサーバーに全部無視され、デフォルトの3m汎用ボックスに。自己検収で「これはパビリオンではない」と検出。</p></div>
+<div class="ev"><span class="t">13:15</span><h2>v2: 変換スクリプトを自書きして復元</h2><p>cagent が正スキーマへの変換 Python を自分で書き、35要素を適用。初めて本物の構成が出現。</p><p class="score">建築基準法: 9/13 PASS</p></div>
+<div class="ev fail"><span class="t">13:40</span><h2>罠: 敷地メタは後から設定できない</h2><p>修正ループ中に要素全消去のバグ(スナップショットから復元)。さらに敷地面積・接道は create_house 時にしか設定できないと判明し、メタ込みで建て直し。</p><p class="score">建築基準法: 12/13 PASS</p></div>
+<div class="ev win"><span class="t">14:00</span><h2>建築基準法 13/13 全PASS</h2><p>採光→ガラス壁をIFCWINDOW化、換気→東面ガラス追加+24h機械換気、建ぺい→基壇をIFCFOOTING化。「法規対応・AI推定」と正直にラベル明記。</p><p class="score">建築基準法: 13/13 PASS ✅</p></div>
+<div class="ev"><span class="t">14:20</span><h2>自己採点ラウンド1: 77点</h2><p>審査員(同じQwen3.6)が「実物に存在しない外周壁・天窓・装飾柱など14要素」を検出して削除指示。コルベ彫像『夜明け』の欠落も指摘。</p><p class="score">再現度: ①85 ②75 ③70 ④60 ⑤95 (平均77)</p></div>
+<div class="ev"><span class="t">14:50</span><h2>ラウンド2: 85点 — 審査員の事実誤認に反論</h2><p>柱断面140mm化・屋根薄化は採用。「基壇は130mmであるべき」「ベンチは実在しない」は事実誤認(実物は1.3mの基壇に8段の階段、長壁沿いにトラバーチンベンチが現存)として却下。</p><p class="score">再現度: ①95 ②85 ③90 ④90 ⑤95 (平均91)</p></div>
+<div class="ev win"><span class="t">15:10</span><h2>ラウンド3: 93点で収束 → 公開</h2><p>ベンチ実寸化を適用。残る指摘はビューア非対応のmaterial code再提案のみとなり収束宣言。法規全PASSを確認して public 化。</p><p class="score">再現度: ①95 ②90 ③95 ④95 ⑤90 (平均93) ✅</p></div>
+</div>
+
+<a class="cta" href="https://bim.house/property/u-ai-wey268i7">完成したパビリオンを bim.house で見る →</a>
+
+<footer>
+<p>本モデルは非公式のAI推定参考モデルです。ミース・ファン・デル・ローエの事務所・財団とは無関係で、寸法・材質は公開情報からの推定を含みます。日本の建築基準法チェックを通すための追加要素(室内床・機械換気等)は実物に存在せず、ラベルに明記しています。</p>
+</footer>
+</body>
+</html>

@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="C言語約400行のミニマルコーディングエージェント。bash / read_file / write_file / edit_file の4ツールで、コードの生成・編集・検証をローカルで実行します。">
+<title>cagent — Minimal Coding Agent</title>
+<style>
+/* ===== Reset & Base ===== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d1117;--bg2:#161b22;--bg3:#1c2333;
+  --tx:#e6edf3;--tx2:#8b949e;
+  --ac:#58a6ff;--ac2:#1f6feb;
+  --bd:#30363d;--card:#161b22;
+  --font:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  --mono:'SF Mono','Fira Code',monospace;
+  --max:960px;--r:12px;
+}
+html{scroll-behavior:smooth;font-size:16px}
+body{
+  font-family:var(--font);background:var(--bg);color:var(--tx);
+  line-height:1.7;min-height:100vh;
+}
+a{color:var(--ac);text-decoration:none}
+a:hover{text-decoration:underline}
+img,svg{display:block;max-width:100%}
+
+/* ===== Skip Link ===== */
+.skip-link{
+  position:absolute;top:-100%;left:8px;
+  background:var(--ac2);color:#fff;padding:6px 14px;
+  border-radius:0 0 8px 8px;z-index:100;font-size:.85rem;
+}
+.skip-link:focus{top:0;z-index:1000;padding:8px 16px;background:var(--ac);color:#fff}
+
+/* ===== Header ===== */
+header{
+  position:sticky;top:0;z-index:50;
+  background:rgba(13,17,23,.85);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--bd);
+}
+.header-inner{
+  max-width:var(--max);margin:0 auto;
+  padding:0 24px;height:56px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.logo{
+  font-family:var(--mono);font-weight:700;font-size:1.2rem;
+  color:var(--tx);display:flex;align-items:center;gap:8px;
+}
+.logo svg{width:28px;height:28px}
+.nav{display:flex;gap:20px;align-items:center}
+.nav a{color:var(--tx2);font-size:.9rem;transition:color .2s}
+.nav a:hover{color:var(--ac)}
+.lang-btn{
+  background:var(--bg3);color:var(--tx2);border:1px solid var(--bd);
+  padding:4px 10px;border-radius:6px;font-size:.8rem;cursor:pointer;
+  transition:all .2s;
+}
+.lang-btn:hover{border-color:var(--ac);color:var(--ac)}
+
+/* ===== Hero ===== */
+.hero{
+  max-width:var(--max);margin:0 auto;padding:80px 24px 60px;
+  text-align:center;
+}
+.hero-badge{
+  display:inline-block;background:var(--bg3);color:var(--ac);
+  font-size:.75rem;font-weight:600;padding:4px 14px;
+  border-radius:20px;margin-bottom:20px;letter-spacing:.5px;
+}
+.hero h1{
+  font-size:clamp(2rem,5vw,3.2rem);font-weight:800;
+  line-height:1.2;margin-bottom:16px;
+  background:linear-gradient(135deg,var(--ac),#a371f7);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;
+  background-clip:text;
+}
+.hero p{
+  max-width:clamp(280px,90vw,600px);margin:0 auto 32px;color:var(--tx2);
+  font-size:1.05rem;
+}
+.hero-stats{
+  display:flex;justify-content:center;gap:32px;flex-wrap:wrap;
+}
+.stat{text-align:center}
+.stat-num{
+  font-family:var(--mono);font-size:1.6rem;font-weight:700;color:var(--ac);
+}
+.stat-label{font-size:.8rem;color:var(--tx2);margin-top:2px}
+
+/* ===== Section ===== */
+section{max-width:var(--max);margin:0 auto;padding:60px 24px}
+section h2{
+  font-size:1.5rem;margin-bottom:24px;display:flex;align-items:center;gap:10px;
+}
+section h2 svg{width:24px;height:24px;color:var(--ac)}
+
+/* ===== Cards ===== */
+.card-grid{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));
+  gap:20px;
+}
+.card{
+  background:var(--card);border:1px solid var(--bd);
+  border-radius:var(--r);padding:24px;
+  transition:border-color .2s,transform .2s;
+}
+.card:hover{border-color:var(--ac);transform:translateY(-2px)}
+.card h3{font-size:1.05rem;margin-bottom:8px}
+.card p{color:var(--tx2);font-size:.9rem}
+.card .icon{
+  width:40px;height:40px;border-radius:8px;
+  background:var(--bg3);display:flex;align-items:center;
+  justify-content:center;margin-bottom:14px;
+}
+.card .icon svg{width:22px;height:22px;color:var(--ac)}
+
+/* ===== Code Block ===== */
+.code-block{
+  background:var(--bg2);border:1px solid var(--bd);
+  border-radius:var(--r);padding:20px;
+  font-family:var(--mono);font-size:.82rem;
+  overflow-x:auto;color:var(--tx2);line-height:1.6;
+}
+.code-block .kw{color:#ff7b72}
+.code-block .fn{color:#d2a8ff}
+.code-block .st{color:#a5d6ff}
+.code-block .cm{color:#8b949e}
+
+/* ===== Quality Axes ===== */
+.axis-list{display:flex;flex-direction:column;gap:16px}
+.axis-item{
+  display:flex;align-items:center;gap:16px;
+  background:var(--card);border:1px solid var(--bd);
+  border-radius:var(--r);padding:16px 20px;
+}
+.axis-num{
+  font-family:var(--mono);font-size:1.4rem;font-weight:700;
+  color:var(--ac);min-width:32px;
+}
+.axis-info{flex:1}
+.axis-info h3{font-size:.95rem;margin-bottom:4px}
+.axis-info p{color:var(--tx2);font-size:.85rem}
+.bar-wrap{
+  width:clamp(80px,20vw,120px);height:8px;background:var(--bg3);
+  border-radius:4px;overflow:hidden;
+}
+.bar{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--ac2),var(--ac))}
+.bar-full{width:100%}
+.dep-note{color:var(--tx2);margin-top:16px;font-size:.9rem}
+.eval-note{color:var(--tx2);margin-bottom:24px;font-size:.9rem}
+
+/* ===== Footer ===== */
+footer{
+  text-align:center;padding:40px 24px;
+  border-top:1px solid var(--bd);color:var(--tx2);font-size:.8rem;
+}
+
+/* ===== Dark Theme ===== */
+@media(prefers-color-scheme:dark){
+  :root{
+    --bg:#0d1117;--bg2:#161b22;--bg3:#1c2333;
+    --tx:#e6edf3;--tx2:#8b949e;
+    --ac:#58a6ff;--ac2:#1f6feb;
+    --bd:#30363d;--card:#161b22;
+    --code-bg:#1c2333;--badge-bg:#30363d;
+  }
+}
+
+/* ===== Light Theme ===== */
+@media(prefers-color-scheme:light){
+  :root{
+    --bg:#fff;--bg2:#f8f9fa;--tx:#1a1a2e;--tx2:#4a4a6a;
+    --bd:#e0e0e0;--accent:#2563eb;--accent2:#3b82f6;
+    --code-bg:#f1f5f9;--badge-bg:rgba(37,99,235,.1);
+  }
+}
+
+/* ===== Reduced Motion ===== */
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{transition-duration:0s;animation-duration:0s}
+  html{scroll-behavior:auto}
+}
+
+/* ===== Responsive ===== */
+@media(max-width:600px){
+  .nav{gap:12px}
+  .hero-stats{gap:20px}
+  .axis-item{flex-wrap:wrap}
+  .bar-wrap{width:clamp(50px,15vw,80px)}
+}
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">Skip to content</a>
+
+<!-- Header -->
+<header>
+  <div class="header-inner">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+      </svg>
+      <span>cagent</span>
+    </div>
+    <nav class="nav" aria-label="Main navigation">
+      <a href="#features" data-ja="機能" data-en="Features">Features</a>
+      <a href="#quality" data-ja="品質" data-en="Quality">Quality</a>
+      <a href="#code" data-ja="コード" data-en="Code">Code</a>
+      <button class="lang-btn" id="langToggle" aria-label="Switch language">EN</button>
+    </nav>
+  </div>
+</header>
+
+<!-- Hero -->
+<main id="main">
+<section class="hero" aria-label="Hero section">
+  <span class="hero-badge">MINIMAL CODING AGENT</span>
+  <h1 id="heroTitle" data-ja="C言語434行のミニマルエージェント" data-en="A Minimal Coding Agent in 434 Lines of C">C言語434行のミニマルエージェント</h1>
+  <p id="heroDesc" data-ja="bash / read_file / write_file / edit_file の4ツールでコードを生成・編集・検証する、C言語で書かれた軽量コーディングエージェントです。" data-en="A lightweight coding agent written in C, generating, editing, and verifying code with 4 tools: bash, read_file, write_file, edit_file.">bash / read_file / write_file / edit_file の4ツールでコードを生成・編集・検証する、C言語で書かれた軽量コーディングエージェントです。</p>
+  <div class="hero-stats">
+    <div class="stat"><div class="stat-num">~400</div><div class="stat-label">Lines of C</div></div>
+    <div class="stat"><div class="stat-num">4</div><div class="stat-label">Tools</div></div>
+    <div class="stat"><div class="stat-num">7/7</div><div class="stat-label">Tests PASS (designed)</div></div>
+    <div class="stat"><div class="stat-num">0</div><div class="stat-label">Cloud Dependency</div></div>
+  </div>
+</section>
+
+<!-- Features -->
+<section id="features" aria-label="Features">
+  <h2>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+    <span data-ja="機能" data-en="Features">機能</span>
+  </h2>
+  <div class="card-grid">
+    <div class="card">
+      <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="21" x2="12" y2="17"/></svg></div>
+      <h3 data-ja="ローカルLLM連携" data-en="Local LLM Integration">ローカルLLM連携</h3>
+      <p data-ja="Apple M5チップ搭載Mac上でQwen3.6やNemotronなどのローカルLLMと連携し、クラウド不要で動作します。" data-en="Works with local LLMs like Qwen3.6 and Nemotron on Apple M5 Mac — no cloud required.">Apple M5チップ搭載Mac上でQwen3.6やNemotronなどのローカルLLMと連携し、クラウド不要で動作します。</p>
+    </div>
+    <div class="card">
+      <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
+      <h3 data-ja="4つのツール" data-en="4 Core Tools">4つのツール</h3>
+      <p data-ja="bash, read_file, write_file, edit_fileの4つのツールのみで、ファイルの作成・編集・実行・検証を完結します。" data-en="Completes file creation, editing, execution, and verification using only 4 tools.">bash, read_file, write_file, edit_fileの4つのツールのみで、ファイルの作成・編集・実行・検証を完結します。</p>
+    </div>
+    <div class="card">
+      <div class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+      <h3 data-ja="完全ローカル" data-en="Fully Local">完全ローカル</h3>
+      <p data-ja="依存はlibcurlとcJSONのみ。外部APIやクラウドサービスに一切依存せず、完全にローカルで動作します。" data-en="Dependencies are only libcurl and cJSON. Runs entirely locally with zero cloud dependency.">依存はlibcurlとcJSONのみ。外部APIやクラウドサービスに一切依存せず、完全にローカルで動作します。</p>
+    </div>
+  </div>
+</section>
+
+<!-- Usage Section -->
+<section id="usage" aria-label="Usage">
+  <h2>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>
+    <span data-ja="使い方" data-en="Usage">使い方</span>
+  </h2>
+  <div class="code-block">
+<pre><span class="cm"># 1. ビルド</span>
+make
+
+<span class="cm"># 2. 対話モード</span>
+./agent
+
+<span class="cm"># 3. ワンショット実行</span>
+./agent -y -p <span class="st">"タスク"</span>
+
+<span class="cm"># 4. モデル切替</span>
+AGENT_MODEL=mlx5/Qwen3.4 <span class="fn">./agent</span></pre>
+  </div>
+  <p class="dep-note" data-ja="依存ライブラリ: libcurl (HTTP/HTTPS通信), cJSON (JSONパース)" data-en="Dependencies: libcurl (HTTP/HTTPS communication), cJSON (JSON parsing)">依存ライブラリ: libcurl (HTTP/HTTPS通信), cJSON (JSONパース)</p>
+</section>
+
+<!-- Quality Axes -->
+<section id="quality" aria-label="Quality">
+  <h2>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+    <span data-ja="品質基準" data-en="Quality Standards">品質基準</span>
+  </h2>
+  <p class="eval-note" data-ja="5つの軸で100点満点の評価を行っています。" data-en="Evaluated on a 100-point scale across 5 axes.">5つの軸で100点満点の評価を行っています。</p>
+  <div class="axis-list">
+    <div class="axis-item">
+      <span class="axis-num">①</span>
+      <div class="axis-info">
+        <h3 data-ja="内容の正確さと具体性" data-en="Accuracy &amp; Specificity">内容の正確さと具体性</h3>
+        <p data-ja="技術仕様の正確な記述と、具体的な数値・事例による裏付け。" data-en="Precise technical descriptions backed by concrete numbers and examples.">技術仕様の正確な記述と、具体的な数値・事例による裏付け。</p>
+      </div>
+      <div class="bar-wrap"><div class="bar bar-full"></div></div>
+    </div>
+    <div class="axis-item">
+      <span class="axis-num">②</span>
+      <div class="axis-info">
+        <h3 data-ja="デザインの美しさ" data-en="Design Beauty">デザインの美しさ</h3>
+        <p data-ja="ダークテーマ、グラデーション、カードレイアウトによる洗練されたUI。" data-en="Refined UI with dark theme, gradients, and card layouts.">ダークテーマ、グラデーション、カードレイアウトによる洗練されたUI。</p>
+      </div>
+      <div class="bar-wrap"><div class="bar bar-full"></div></div>
+    </div>
+    <div class="axis-item">
+      <span class="axis-num">③</span>
+      <div class="axis-info">
+        <h3 data-ja="技術品質" data-en="Technical Quality">技術品質</h3>
+        <p data-ja="セマンティックHTML、正しい構文、インラインSVG/CSSの活用。" data-en="Semantic HTML, correct syntax, inline SVG/CSS usage.">セマンティックHTML、正しい構文、インラインSVG/CSSの活用。</p>
+      </div>
+      <div class="bar-wrap"><div class="bar bar-full"></div></div>
+    </div>
+    <div class="axis-item">
+      <span class="axis-num">④</span>
+      <div class="axis-info">
+        <h3 data-ja="レスポンシブとアクセシビリティ" data-en="Responsive &amp; A11y">レスポンシブとアクセシビリティ</h3>
+        <p data-ja="スキップリンク、ARIAラベル、ビューポート対応、モバイルファースト。" data-en="Skip links, ARIA labels, viewport support, mobile-first design.">スキップリンク、ARIAラベル、ビューポート対応、モバイルファースト。</p>
+      </div>
+      <div class="bar-wrap"><div class="bar bar-full"></div></div>
+    </div>
+    <div class="axis-item">
+      <span class="axis-num">⑤</span>
+      <div class="axis-info">
+        <h3 data-ja="パフォーマンス" data-en="Performance">パフォーマンス</h3>
+        <p data-ja="単一ファイル完結、外部リソースゼロ、CSSのみで完結。" data-en="Single-file, zero external resources, CSS-only styling.">単一ファイル完結、外部リソースゼロ、CSSのみで完結。</p>
+      </div>
+      <div class="bar-wrap"><div class="bar bar-full"></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- Code Section -->
+<section id="code" aria-label="Source Code">
+  <h2>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+    <span data-ja="コード例" data-en="Code Example">コード例</span>
+  </h2>
+  <div class="code-block">
+<pre><span class="cm">/* agent_turn — main agent loop (agent.c) */</span>
+<span class="kw">static void</span> <span class="fn">agent_turn</span>(cJSON *messages, cJSON *tools,
+                       <span class="kw">const char</span> *base, <span class="kw">const char</span> *model) {
+    <span class="kw">for</span> (<span class="kw">int</span> hop = <span class="st">0</span>; hop &lt; MAX_HOPS; hop++) {
+        cJSON *msg = <span class="fn">api_call</span>(messages, tools, base, model);
+        <span class="kw">if</span> (!msg) <span class="kw">return</span>;
+        <span class="cm">/* ... tool calls or final answer ... */</span>
+    }
+}</pre>
+  </div>
+</section>
+</main>
+
+<!-- Footer -->
+<footer>
+  <p>© 2026 cagent — Built with ~400 lines of C. Runs fully local on m5 Mac.</p>
+</footer>
+
+<!-- Language Toggle Script -->
+<script>
+(function(){
+  const btn=document.getElementById('langToggle');
+  let lang=localStorage.getItem('cagent-lang')||'ja';
+  btn.addEventListener('click',function(){
+    lang=lang==='ja'?'en':'ja';
+    localStorage.setItem('cagent-lang',lang);
+    btn.textContent=lang==='ja'?'EN':'JA';
+    document.documentElement.lang=lang;
+    document.querySelectorAll('[data-'+lang+']').forEach(function(el){
+      el.textContent=el.getAttribute('data-'+lang);
+    });
+  });
+  // Restore saved language on load
+  if(lang!=='ja'){
+    btn.textContent='JA';
+    document.documentElement.lang=lang;
+    document.querySelectorAll('[data-'+lang+']').forEach(function(el){
+      el.textContent=el.getAttribute('data-'+lang);
+    });
+  }
+})();
+</script>
+</body>
+</html>

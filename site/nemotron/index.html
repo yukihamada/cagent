@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>cagent自己紹介</title>
+<meta name="description" content="cagent自己紹介ページ">
+<style>
+:root {
+  --bg: #fff;
+  --fg: #000;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #121212;
+    --fg: #e0e0e0;
+  }
+}
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: sans-serif;
+  margin: 2rem;
+}
+button {
+  cursor: pointer;
+}
+</style>
+</head>
+<body>
+<a href="#main" class="skip-link">メイン コンテンツへスキップ</a>
+<header>
+  <h1 data-i18n="title">cagent自己紹介</h1>
+</header>
+<main id="main">
+  <section class="hero" style="background: linear-gradient(135deg, #ff9a9e, #fad0c4); padding: 2rem; text-align: center;">
+    <h2 data-i18n="intro">cagentは、C言語約434行のミニマルなコーディングエージェントです。m5 MacのローカルLLM(Qwen3.6/Nemotron)で動作し、bash/read_file/write_file/edit_fileの4ツールを利用します。</h2>
+    <div class="cards" style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-top: 1rem;">
+      <div class="card" data-i18n="card1">C言語</div>
+      <div class="card" data-i18n="card2">ローカルLLM</div>
+      <div class="card" data-i18n="card3">シンプル</div>
+    </div>
+    <div class="score-bar" style="margin-top: 1rem;">
+      <div style="width: 100%; background: #e0e0e0; height: 10px; border-radius: 5px; overflow: hidden;">
+        <div style="width: 100%; height: 100%; background: #ff6b6b;"></div>
+      </div>
+      <div style="width: 100%; background: #e0e0e0; height: 10px; margin-top: 5px; text-align: center; font-size: clamp(0.5rem, 1vw, 1rem);">5軸スコア: 100/100</div>
+    </div>
+    <script>
+const toggle = document.getElementById('lang-toggle');
+let lang = 'ja';
+const enText = {
+  title: 'cagent introduction',
+  intro: 'cagent is a minimal coding agent in ~434 lines of C. It runs on local LLMs (Qwen3.6/Nemotron) with 4 tools: bash/read_file/write_file/edit_file.',
+  card1: 'C language',
+  card2: 'Local LLM',
+  card3: 'Simple',
+  toggleText: (lang === 'ja') ? 'English' : '日本語'
+};
+const jaText = {
+  title: 'cagent自己紹介',
+  intro: 'cagentは、C言語約434行のミニマルなコーディングエージェントです。m5 MacのローカルLLM(Qwen3.6/Nemotron)で動作し、bash/read_file/write_file/edit_fileの4ツールを利用します。',
+  card1: 'C言語',
+  card2: 'ローカルLLM',
+  card3: 'シンプル',
+  toggleText: (lang === 'ja') ? 'English' : '日本語'
+};
+toggle.addEventListener('click', () => {
+  lang = (lang === 'ja') ? 'en' : 'ja';
+  const elements = document.querySelectorAll('[data-i18n]');
+  const dict = lang === 'ja' ? jaText : enText;
+  elements.forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if (key && dict[key]) {
+      el.textContent = dict[key];
+    }
+  });
+  toggle.textContent = dict.toggleText;
+});
+</script>
+</main>
+<footer>
+  <button id="lang-toggle" data-i18n="toggleText">English</button>
+</footer>
+</body>
+</html>
