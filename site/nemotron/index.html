@@ -25,6 +25,57 @@ body {
 button {
   cursor: pointer;
 }
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 0;
+  background: var(--fg);
+  color: var(--bg);
+  padding: 0.5rem 1rem;
+  text-decoration: none;
+  z-index: 100;
+}
+.skip-link:focus {
+  top: 0;
+}
+button:focus, a:focus {
+  outline: 2px solid var(--fg);
+  outline-offset: 2px;
+}
+.hero {
+  background: linear-gradient(135deg, #ff9a9e, #fad0c4);
+  padding: 2rem;
+  text-align: center;
+}
+.cards {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  margin-top: 1rem;
+}
+.score-bar {
+  margin-top: 1rem;
+}
+.score-bar-track {
+  width: 100%;
+  background: #e0e0e0;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.score-bar-fill {
+  width: 100%;
+  height: 100%;
+  background: #ff6b6b;
+}
+.score-bar-label {
+  width: 100%;
+  background: #e0e0e0;
+  height: 10px;
+  margin-top: 5px;
+  text-align: center;
+  font-size: clamp(0.5rem, 1vw, 1rem);
+}
 </style>
 </head>
 <body>
@@ -33,20 +84,25 @@ button {
   <h1 data-i18n="title">cagent自己紹介</h1>
 </header>
 <main id="main">
-  <section class="hero" style="background: linear-gradient(135deg, #ff9a9e, #fad0c4); padding: 2rem; text-align: center;">
+  <section class="hero">
     <h2 data-i18n="intro">cagentは、C言語約434行のミニマルなコーディングエージェントです。m5 MacのローカルLLM(Qwen3.6/Nemotron)で動作し、bash/read_file/write_file/edit_fileの4ツールを利用します。</h2>
-    <div class="cards" style="display: grid; gap: 1rem; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-top: 1rem;">
+    <div class="cards">
       <div class="card" data-i18n="card1">C言語</div>
       <div class="card" data-i18n="card2">ローカルLLM</div>
       <div class="card" data-i18n="card3">シンプル</div>
     </div>
-    <div class="score-bar" style="margin-top: 1rem;">
-      <div style="width: 100%; background: #e0e0e0; height: 10px; border-radius: 5px; overflow: hidden;">
-        <div style="width: 100%; height: 100%; background: #ff6b6b;"></div>
+    <div class="score-bar">
+      <div class="score-bar-track">
+        <div class="score-bar-fill"></div>
       </div>
-      <div style="width: 100%; background: #e0e0e0; height: 10px; margin-top: 5px; text-align: center; font-size: clamp(0.5rem, 1vw, 1rem);">5軸スコア: 100/100</div>
+      <div class="score-bar-label">5軸スコア: 100/100</div>
     </div>
-    <script>
+  </section>
+</main>
+<footer>
+  <button id="lang-toggle" data-i18n="toggleText" aria-label="Switch language">English</button>
+</footer>
+<script>
 const toggle = document.getElementById('lang-toggle');
 let lang = 'ja';
 const enText = {
@@ -78,10 +134,5 @@ toggle.addEventListener('click', () => {
   toggle.textContent = dict.toggleText;
 });
 </script>
-</section>
-</main>
-<footer>
-  <button id="lang-toggle" data-i18n="toggleText">English</button>
-</footer>
 </body>
 </html>

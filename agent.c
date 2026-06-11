@@ -11,9 +11,11 @@
  * "tools" in the request and read message.tool_calls.
  *
  * usage:
- *   agent [-p "prompt"] [-y] [-m model] [-b base_url]
+ *   agent [-p "prompt"] [-y] [-t] [-m model] [-b base_url]
  *     -p  one-shot mode: run a single task and exit (final answer on stdout)
  *     -y  auto-approve tool executions (no [y/N] prompt)
+ *     -t  thinking mode: let the model reason before acting
+ *         (slower, ~5-10x tokens, noticeably better tool choices)
  *
  * env (flags take precedence):
  *   AGENT_BASE   default http://127.0.0.1:8780 (any OpenAI-compatible server;
@@ -37,6 +39,7 @@
 #define TRIM_OVER    600   /* tool results longer than this get trimmed   */
 
 static int g_yes = 0;      /* -y: auto-approve tools */
+static int g_think = 0;    /* -t: enable model reasoning before actions */
 static char g_finish[32];  /* finish_reason of the last LLM call */
 
 static const char *SYSTEM_PROMPT =
@@ -162,13 +165,11 @@ static cJSON *api_call(cJSON *messages, cJSON *tools, const char *base, const ch
     cJSON_AddStringToObject(req, "model", model);
     cJSON_AddItemToObject(req, "messages", cJSON_Duplicate(messages, 1));
     cJSON_AddItemToObject(req, "tools", cJSON_Duplicate(tools, 1));
-    cJSON_AddNumberToObject(req, "max_tokens", 8192);
+    cJSON_AddNumberToObject(req, "max_tokens", g_think ? 16384 : 8192);
     cJSON_AddNumberToObject(req, "temperature", 0.2);
-    if (!getenv("AGENT_THINK")) {
-        /* Qwen3.6 on mlx: enable_thinking=false is mandatory */
-        cJSON *kw = cJSON_AddObjectToObject(req, "chat_template_kwargs");
-        cJSON_AddBoolToObject(kw, "enable_thinking", 0);
-    }
+    /* Qwen3.x on mlx defaults to <think> mode; control it explicitly */
+    cJSON *kw = cJSON_AddObjectToObject(req, "chat_template_kwargs");
+    cJSON_AddBoolToObject(kw, "enable_thinking", g_think);
     char *body = cJSON_PrintUnformatted(req);
     cJSON_Delete(req);
 
@@ -410,14 +411,16 @@ int main(int argc, char **argv) {
     const char *oneshot = NULL;
     for (int i = 1; i < argc; i++) {
         if      (!strcmp(argv[i], "-y")) g_yes = 1;
+        else if (!strcmp(argv[i], "-t")) g_think = 1;
         else if (!strcmp(argv[i], "-p") && i + 1 < argc) oneshot = argv[++i];
         else if (!strcmp(argv[i], "-m") && i + 1 < argc) model   = argv[++i];
         else if (!strcmp(argv[i], "-b") && i + 1 < argc) base    = argv[++i];
         else {
-            fprintf(stderr, "usage: agent [-p \"prompt\"] [-y] [-m model] [-b base_url]\n");
+            fprintf(stderr, "usage: agent [-p \"prompt\"] [-y] [-t] [-m model] [-b base_url]\n");
             return 1;
         }
     }
+    if (getenv("AGENT_THINK")) g_think = 1;
     if (!base)  base  = "http://127.0.0.1:8780";
     if (!model) model = "mlx-community/Qwen3.6-35B-A3B-4bit";
     curl_global_init(CURL_GLOBAL_DEFAULT);

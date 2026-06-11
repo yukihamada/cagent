@@ -39,7 +39,7 @@ make                       # cc -O2 -Wall -Wextra -o agent agent.c cJSON.c -lcur
 | `-m` / `AGENT_MODEL` | `mlx-community/Qwen3.6-35B-A3B-4bit` | model id |
 | `-p` | — | one-shot prompt (exit after) |
 | `-y` | off | auto-approve tool calls |
-| `AGENT_THINK` | unset | keep `<think>` mode (default sends `enable_thinking:false`) |
+| `-t` / `AGENT_THINK` | off | thinking mode — the model reasons before acting (~5-10x tokens, much better judgment) |
 
 For a remote LLM host: `ssh -L 8780:127.0.0.1:8780 user@llm-host`, then run as usual.
 
@@ -60,6 +60,11 @@ For a remote LLM host: `ssh -L 8780:127.0.0.1:8780 user@llm-host`, then run as u
 - Local-LLM agents fail differently than frontier ones: they loop on the same
   verification command, invent API schemas, and mangle JSON-RPC plumbing.
   Give them pre-verified schemas and split big writes into ≤100-line chunks.
+- **Thinking mode is worth the tokens for judging.** The same file scored
+  100/100/100/100/100 by a non-thinking judge scored 90/75/70/65/95 with
+  thinking on — and the thinking judge found a *real functional bug*
+  (a `<script>` running before its target element existed) that two
+  non-thinking judges had missed.
 
 ## Files
 
