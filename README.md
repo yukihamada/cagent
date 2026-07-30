@@ -8,7 +8,7 @@ Works with any OpenAI-compatible `/v1/chat/completions` server
 (tested with [mlx-lm](https://github.com/ml-explore/mlx-lm) serving
 Qwen3.6-35B-A3B and Nemotron-Cascade-2-30B on Apple Silicon).
 
-## teai.io で使う（クラウド・鍵なしでも動く）
+## teai.io で使う（クラウド）
 
 ローカルLLMを立てなくても、[teai.io](https://teai.io) のホスト済みAPIでそのまま動きます:
 
@@ -16,8 +16,8 @@ Qwen3.6-35B-A3B and Nemotron-Cascade-2-30B on Apple Silicon).
 AGENT_BASE=teai ./agent -y -p "bashでdateを実行して結果を教えて"
 ```
 
-- 鍵なし = フリー枠（Nemotron固定・10 req/分 + 50 req/日/IP）。上限に達すると
-  cagent がキーの取り方を案内する
+- **APIキーが必要**（2026-07-30以降）。鍵なしのリクエストは用意されたデモ応答だけが返り、
+  それ以外は 402 + 登録案内になる（cagent がキーの取り方を表示する）
 - `AGENT_KEY=te_...`（teai.ioのAPIキー）で100+モデルのフルカタログ。
   利用分はアカウントのクレジットから引かれる（Free 100 / Starter 月25,000 / Pro 30,000）
 - モデル未指定ならサーバ側オートルーター `teai/auto` に任せる（`-m` で明示指定も可）
@@ -70,7 +70,7 @@ and even design a building (we made it model the Barcelona Pavilion on
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yukihamada/cagent/master/install.sh | bash
-cagent -b teai -y -p "hello"       # 鍵なしでそのまま試せる
+AGENT_KEY=te_... cagent -b teai -y -p "hello"   # キーはteai.ioで発行
 ```
 
 ソースを取ってきて `make` するだけのインストーラ（配布バイナリなし・依存は libcurl のみ）。
