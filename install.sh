@@ -43,8 +43,8 @@ esac
 cat <<'EOF'
 
 使い方:
-  AGENT_KEY=te_... cagent -b teai -y -p "タスクを書く"   # クラウド(teai.io)
-  cagent -b teai -k                        # 声で聞く / REPLで v と打てば声で指示
+  AGENT_KEY=te_... cagent -b teai -y -p "タスクを書く"   # クラウド(teai.io・声あり既定)
+  cagent -b teai --no-koe                  # 声なしで使う
   cagent                                   # ローカルLLM (http://127.0.0.1:8780)
 
 APIキーの取り方（100+モデル・クレジット課金）:

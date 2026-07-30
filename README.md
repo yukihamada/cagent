@@ -25,20 +25,25 @@ AGENT_BASE=teai ./agent -y -p "bashでdateを実行して結果を教えて"
 Nemotron系の推論モデルが答えを `<think>` 内に書いて黙るケースは、think内テキストを
 表示にフォールバックすることで対処済み。
 
-## 声で使う（KOE — koe.live）
+## 声で使う（KOE — koe.live）— デフォルトON
 
-`-k` をつけると、エージェントの回答を [KOE](https://koe.live) の実声TTSが読み上げ、
-REPLで `v` + Enter と打つと**マイクで話した内容がそのままプロンプトになる**（STTもKOE）:
+エージェントの回答は [KOE](https://koe.live) の実声TTSで**常に読み上げられる**。
+REPLでは `v` + Enter と打つと**マイクで話した内容がそのままプロンプトになる**（STTもKOE）:
 
 ```bash
-AGENT_BASE=teai ./agent -k          # 回答を声で聞く / 'v' で声で指示
+AGENT_BASE=teai ./agent             # 既定で声あり / 'v' で声で指示
+AGENT_BASE=teai ./agent --no-koe    # 声なしで使う（AGENT_KOE=0 でも可）
 ```
 
-| env | 意味 |
+| env / flag | 意味 |
 |---|---|
+| `--no-koe` / `AGENT_KOE=0` | 声を無効化（既定は有効） |
 | `KOE_VOICE` | 読み上げの声ID（既定 `kentaro`＝本人同意済みの公開サンプル） |
 | `KOE_KEY` | koe.liveのトークン（`X-Koe-Admin`）。**自分の声のその場登録**に必要 |
 | `KOE_BASE` | 既定 `https://koe.live` |
+
+読み上げは15秒でタイムアウトし、失敗しても本体の応答は止まらない（声エンジンが
+混雑していても最終回答は必ずテキストで返る）。
 
 自分の声で読み上げたいときは、その場で登録できる（お題を1文読むだけ・要 `KOE_KEY`）:
 

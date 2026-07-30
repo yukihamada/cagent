@@ -11,11 +11,12 @@
  * "tools" in the request and read message.tool_calls.
  *
  * usage:
- *   agent [-p "prompt"] [-y] [-t] [-m model] [-b base_url]
+ *   agent [-p "prompt"] [-y] [-t] [-m model] [-b base_url] [--no-koe]
  *     -p  one-shot mode: run a single task and exit (final answer on stdout)
  *     -y  auto-approve tool executions (no [y/N] prompt)
  *     -t  thinking mode: let the model reason before acting
  *         (slower, ~5-10x tokens, noticeably better tool choices)
+ *     --no-koe  disable voice (KOE is on by default; see below)
  *
  * env (flags take precedence):
  *   AGENT_BASE   default http://127.0.0.1:8780 (any OpenAI-compatible server;
@@ -27,9 +28,10 @@
  *                full catalog + credits; anonymous = free tier)
  *   AGENT_THINK  set to keep <think> mode (default: enable_thinking=false)
  *
- * voice (KOE, koe.live):
- *   -k           voice mode: speak final answers aloud; in the REPL, type
+ * voice (KOE, koe.live) — on by default:
+ *   -k / (default)  voice mode: speak final answers aloud; in the REPL, type
  *                "v" + Enter to talk instead of typing (mic -> STT -> prompt)
+ *   --no-koe     disable voice for this run (env AGENT_KOE=0 to disable by default)
  *   --koe-enroll [id]  record your voice once and register it on the spot
  *                (requires KOE_KEY; prints the voice id to use as KOE_VOICE)
  *   KOE_BASE     default https://koe.live
@@ -56,7 +58,7 @@
 #define TRIM_OVER    600   /* tool results longer than this get trimmed   */
 
 static int g_yes = 0;      /* -y: auto-approve tools */
-static int g_koe = 0;      /* -k: speak answers / mic input via koe.live */
+static int g_koe = 1;      /* voice via koe.live: on by default; --no-koe / AGENT_KOE=0 to disable */
 static int g_think = 0;    /* -t: enable model reasoning before actions */
 static char g_finish[32];  /* finish_reason of the last LLM call */
 
@@ -292,7 +294,7 @@ static const char *koe_base(void) {
 }
 
 /* binary-safe POST; ctype = request Content-Type; KOE_KEY -> X-Koe-Admin */
-static Buf koe_post(const char *path, const void *body, size_t body_len, const char *ctype) {
+static Buf koe_post_t(const char *path, const void *body, size_t body_len, const char *ctype, long timeout_secs) {
     Buf resp = {0};
     CURL *curl = curl_easy_init();
     if (!curl) return resp;
@@ -312,12 +314,17 @@ static Buf koe_post(const char *path, const void *body, size_t body_len, const c
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body_len);
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
-    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, timeout_secs);
     CURLcode rc = curl_easy_perform(curl);
     curl_slist_free_all(hdrs);
     curl_easy_cleanup(curl);
     if (rc != CURLE_OK) { free(resp.data); resp.data = NULL; resp.len = 0; }
     return resp;
+}
+
+/* default timeout (recording upload / voice registration can take a while) */
+static Buf koe_post(const char *path, const void *body, size_t body_len, const char *ctype) {
+    return koe_post_t(path, body, body_len, ctype, 120L);
 }
 
 static const char *find_cmd(const char *const *cands) {
@@ -362,7 +369,9 @@ static void koe_say(const char *text) {
     cJSON_AddStringToObject(req, "source", "cagent");
     char *body = cJSON_PrintUnformatted(req);
     cJSON_Delete(req);
-    Buf r = koe_post("/api/speak", body, strlen(body), "application/json");
+    /* short timeout: TTS should be fast, and a busy voice engine shouldn't
+     * stall an otherwise-finished agent turn (falls through as a no-op) */
+    Buf r = koe_post_t("/api/speak", body, strlen(body), "application/json", 15L);
     free(body);
     if (!r.data) { fprintf(stderr, "  [koe: no response]\n"); return; }
     if (r.len && r.data[0] == '{') {              /* JSON error, not audio */
@@ -693,10 +702,13 @@ int main(int argc, char **argv) {
     const char *base    = getenv("AGENT_BASE");
     const char *model   = getenv("AGENT_MODEL");
     const char *oneshot = NULL;
+    const char *koe_env = getenv("AGENT_KOE");
+    if (koe_env && !strcmp(koe_env, "0")) g_koe = 0;
     for (int i = 1; i < argc; i++) {
         if      (!strcmp(argv[i], "-y")) g_yes = 1;
         else if (!strcmp(argv[i], "-t")) g_think = 1;
         else if (!strcmp(argv[i], "-k")) g_koe = 1;
+        else if (!strcmp(argv[i], "--no-koe")) g_koe = 0;
         else if (!strcmp(argv[i], "--koe-enroll")) {
             const char *id = (i + 1 < argc && argv[i + 1][0] != '-') ? argv[++i] : "";
             curl_global_init(CURL_GLOBAL_DEFAULT);
@@ -706,7 +718,7 @@ int main(int argc, char **argv) {
         else if (!strcmp(argv[i], "-m") && i + 1 < argc) model   = argv[++i];
         else if (!strcmp(argv[i], "-b") && i + 1 < argc) base    = argv[++i];
         else {
-            fprintf(stderr, "usage: agent [-p \"prompt\"] [-y] [-t] [-k] [-m model] [-b base_url] [--koe-enroll [id]]\n");
+            fprintf(stderr, "usage: agent [-p \"prompt\"] [-y] [-t] [-m model] [-b base_url] [--no-koe] [--koe-enroll [id]]\n");
             return 1;
         }
     }
