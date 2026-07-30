@@ -20,7 +20,11 @@
  * env (flags take precedence):
  *   AGENT_BASE   default http://127.0.0.1:8780 (any OpenAI-compatible server;
  *                for a remote host: ssh -L 8780:127.0.0.1:8780 user@llm-host)
+ *                "teai" = https://api.teai.io (hosted, 100+ models, anon OK)
  *   AGENT_MODEL  default mlx-community/Qwen3.6-35B-A3B-4bit
+ *                (teai.io base: defaults to "teai/auto" auto-router instead)
+ *   AGENT_KEY    optional Bearer token (teai.io: te_... API key for the
+ *                full catalog + credits; anonymous = free tier)
  *   AGENT_THINK  set to keep <think> mode (default: enable_thinking=false)
  */
 #include <stdio.h>
@@ -119,6 +123,12 @@ static char *http_post(const char *url, const char *body) {
         if (!curl) return NULL;
         Buf resp = {0};
         struct curl_slist *hdrs = curl_slist_append(NULL, "Content-Type: application/json");
+        const char *key = getenv("AGENT_KEY");
+        if (key && *key) {
+            char auth[512];
+            snprintf(auth, sizeof auth, "Authorization: Bearer %s", key);
+            hdrs = curl_slist_append(hdrs, auth);
+        }
         curl_easy_setopt(curl, CURLOPT_URL, url);
         curl_easy_setopt(curl, CURLOPT_HTTPHEADER, hdrs);
         curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
@@ -205,6 +215,31 @@ static cJSON *api_call(cJSON *messages, cJSON *tools, const char *base, const ch
 }
 
 static void strip_think(char *s) {
+    /* Reasoning models (Nemotron via teai.io, Qwen local) sometimes put the
+     * whole answer INSIDE <think> and leave nothing after it. If stripping
+     * would erase everything, salvage the think body instead of going mute. */
+    char *first = strstr(s, "<think>");
+    if (first) {
+        char probe_ok = 0;
+        for (char *p = s; *p; ) {
+            char *a = strstr(p, "<think>");
+            if (!a) { if (*p) probe_ok = 1; break; }
+            if (a != p) { probe_ok = 1; break; }   /* text before the block */
+            char *b = strstr(a, "</think>");
+            if (!b) break;
+            p = b + strlen("</think>");
+            while (*p == ' ' || *p == '\n') p++;
+        }
+        if (!probe_ok) {
+            /* keep inner text of the first think block as the visible answer */
+            char *inner = first + strlen("<think>");
+            char *end = strstr(inner, "</think>");
+            size_t len = end ? (size_t)(end - inner) : strlen(inner);
+            memmove(s, inner, len);
+            s[len] = 0;
+            return;
+        }
+    }
     for (;;) {
         char *a = strstr(s, "<think>");
         if (!a) return;
@@ -422,7 +457,12 @@ int main(int argc, char **argv) {
     }
     if (getenv("AGENT_THINK")) g_think = 1;
     if (!base)  base  = "http://127.0.0.1:8780";
-    if (!model) model = "mlx-community/Qwen3.6-35B-A3B-4bit";
+    /* teai.io shorthand: AGENT_BASE=teai (or -b teai) → hosted multi-model API.
+     * Anonymous works (free tier); AGENT_KEY=te_... unlocks the full catalog. */
+    if (!strcmp(base, "teai")) base = "https://api.teai.io";
+    if (!model) model = strstr(base, "teai.io")
+        ? "teai/auto"                          /* server-side auto-router */
+        : "mlx-community/Qwen3.6-35B-A3B-4bit";
     curl_global_init(CURL_GLOBAL_DEFAULT);
 
     char cwd[1024] = "?";

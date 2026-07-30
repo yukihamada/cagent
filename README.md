@@ -8,6 +8,21 @@ Works with any OpenAI-compatible `/v1/chat/completions` server
 (tested with [mlx-lm](https://github.com/ml-explore/mlx-lm) serving
 Qwen3.6-35B-A3B and Nemotron-Cascade-2-30B on Apple Silicon).
 
+## teai.io で使う（クラウド・鍵なしでも動く）
+
+ローカルLLMを立てなくても、[teai.io](https://teai.io) のホスト済みAPIでそのまま動きます:
+
+```bash
+AGENT_BASE=teai ./agent -y -p "bashでdateを実行して結果を教えて"
+```
+
+- 鍵なし = フリー枠（Nemotron・IPごとの日次上限あり）
+- `AGENT_KEY=te_...`（teai.ioのAPIキー）で100+モデルのフルカタログ+クレジット残高が使える
+- モデル未指定ならサーバ側オートルーター `teai/auto` に任せる（`-m` で明示指定も可）
+
+Nemotron系の推論モデルが答えを `<think>` 内に書いて黙るケースは、think内テキストを
+表示にフォールバックすることで対処済み。
+
 ## What it does
 
 The whole trick of a coding agent is one loop:
@@ -35,8 +50,9 @@ make                       # cc -O2 -Wall -Wextra -o agent agent.c cJSON.c -lcur
 
 | flag / env | default | meaning |
 |---|---|---|
-| `-b` / `AGENT_BASE` | `http://127.0.0.1:8780` | OpenAI-compatible server |
-| `-m` / `AGENT_MODEL` | `mlx-community/Qwen3.6-35B-A3B-4bit` | model id |
+| `-b` / `AGENT_BASE` | `http://127.0.0.1:8780` | OpenAI-compatible server (`teai` = https://api.teai.io) |
+| `-m` / `AGENT_MODEL` | `mlx-community/Qwen3.6-35B-A3B-4bit` | model id (teai.io なら既定 `teai/auto`) |
+| `AGENT_KEY` | — | Bearer トークン (teai.io の `te_...` APIキー等) |
 | `-p` | — | one-shot prompt (exit after) |
 | `-y` | off | auto-approve tool calls |
 | `-t` / `AGENT_THINK` | off | thinking mode — the model reasons before acting (~5-10x tokens, much better judgment) |
