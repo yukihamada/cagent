@@ -23,6 +23,32 @@ AGENT_BASE=teai ./agent -y -p "bashでdateを実行して結果を教えて"
 Nemotron系の推論モデルが答えを `<think>` 内に書いて黙るケースは、think内テキストを
 表示にフォールバックすることで対処済み。
 
+## 声で使う（KOE — koe.live）
+
+`-k` をつけると、エージェントの回答を [KOE](https://koe.live) の実声TTSが読み上げ、
+REPLで `v` + Enter と打つと**マイクで話した内容がそのままプロンプトになる**（STTもKOE）:
+
+```bash
+AGENT_BASE=teai ./agent -k          # 回答を声で聞く / 'v' で声で指示
+```
+
+| env | 意味 |
+|---|---|
+| `KOE_VOICE` | 読み上げの声ID（既定 `kentaro`＝本人同意済みの公開サンプル） |
+| `KOE_KEY` | koe.liveのトークン（`X-Koe-Admin`）。**自分の声のその場登録**に必要 |
+| `KOE_BASE` | 既定 `https://koe.live` |
+
+自分の声で読み上げたいときは、その場で登録できる（お題を1文読むだけ・要 `KOE_KEY`）:
+
+```bash
+KOE_KEY=... ./agent --koe-enroll        # 録音→本人ライブネス検証→声ID発行
+export KOE_VOICE=<発行されたID>
+```
+
+鍵なしでも読み上げ（公開ボイス）と音声操作は動く。声の登録だけはKOEの背骨
+（本人同意ゲート＝お題をその場で読めた人しか登録できない）に従いログイン/キー必須。
+録音は ffmpeg / sox / arecord のどれかを使う。再生は afplay / mpg123 / ffplay。
+
 ## What it does
 
 The whole trick of a coding agent is one loop:

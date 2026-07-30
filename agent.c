@@ -26,6 +26,17 @@
  *   AGENT_KEY    optional Bearer token (teai.io: te_... API key for the
  *                full catalog + credits; anonymous = free tier)
  *   AGENT_THINK  set to keep <think> mode (default: enable_thinking=false)
+ *
+ * voice (KOE, koe.live):
+ *   -k           voice mode: speak final answers aloud; in the REPL, type
+ *                "v" + Enter to talk instead of typing (mic -> STT -> prompt)
+ *   --koe-enroll [id]  record your voice once and register it on the spot
+ *                (requires KOE_KEY; prints the voice id to use as KOE_VOICE)
+ *   KOE_BASE     default https://koe.live
+ *   KOE_KEY      koe.live admin/MCP token (X-Koe-Admin). Optional: without
+ *                it, speaking with public consented voices + STT still work
+ *   KOE_VOICE    voice id for replies (default "kentaro"; your own id after
+ *                --koe-enroll)
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,6 +44,8 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <sys/time.h>
+#include <signal.h>
+#include <fcntl.h>
 #include <curl/curl.h>
 #include "cJSON.h"
 
@@ -43,6 +56,7 @@
 #define TRIM_OVER    600   /* tool results longer than this get trimmed   */
 
 static int g_yes = 0;      /* -y: auto-approve tools */
+static int g_koe = 0;      /* -k: speak answers / mic input via koe.live */
 static int g_think = 0;    /* -t: enable model reasoning before actions */
 static char g_finish[32];  /* finish_reason of the last LLM call */
 
@@ -250,6 +264,220 @@ static void strip_think(char *s) {
     }
 }
 
+/* ---------- KOE voice I/O (koe.live) ---------- */
+
+static const char *koe_base(void) {
+    const char *b = getenv("KOE_BASE");
+    return (b && *b) ? b : "https://koe.live";
+}
+
+/* binary-safe POST; ctype = request Content-Type; KOE_KEY -> X-Koe-Admin */
+static Buf koe_post(const char *path, const void *body, size_t body_len, const char *ctype) {
+    Buf resp = {0};
+    CURL *curl = curl_easy_init();
+    if (!curl) return resp;
+    char url[512], ct[128];
+    snprintf(url, sizeof url, "%s%s", koe_base(), path);
+    snprintf(ct, sizeof ct, "Content-Type: %s", ctype);
+    struct curl_slist *hdrs = curl_slist_append(NULL, ct);
+    const char *key = getenv("KOE_KEY");
+    if (key && *key) {
+        char auth[512];
+        snprintf(auth, sizeof auth, "X-Koe-Admin: %s", key);
+        hdrs = curl_slist_append(hdrs, auth);
+    }
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, hdrs);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body_len);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_cb);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &resp);
+    curl_easy_setopt(curl, CURLOPT_TIMEOUT, 120L);
+    CURLcode rc = curl_easy_perform(curl);
+    curl_slist_free_all(hdrs);
+    curl_easy_cleanup(curl);
+    if (rc != CURLE_OK) { free(resp.data); resp.data = NULL; resp.len = 0; }
+    return resp;
+}
+
+static const char *find_cmd(const char *const *cands) {
+    static char found[64];
+    for (int i = 0; cands[i]; i++) {
+        char probe[128];
+        snprintf(probe, sizeof probe, "command -v %s >/dev/null 2>&1", cands[i]);
+        if (system(probe) == 0) { snprintf(found, sizeof found, "%s", cands[i]); return found; }
+    }
+    return NULL;
+}
+
+/* strip code fences / URLs and cap length so TTS reads prose, not diffs */
+static void koe_sanitize(const char *in, char *out, size_t cap) {
+    size_t o = 0;
+    int fence = 0;
+    for (const char *p = in; *p && o + 8 < cap; ) {
+        if (!strncmp(p, "```", 3)) { fence = !fence; p += 3; continue; }
+        if (fence) { p++; continue; }
+        if (!strncmp(p, "http://", 7) || !strncmp(p, "https://", 8)) {
+            while (*p && *p != ' ' && *p != '\n' && *p != ')') p++;
+            o += snprintf(out + o, cap - o, "リンク");
+            continue;
+        }
+        if (*p == '`' || *p == '*' || *p == '#') { p++; continue; }
+        out[o++] = *p++;
+    }
+    out[utf8_trim(out, o)] = 0;
+}
+
+/* speak text aloud via koe.live (blocking; failures are non-fatal) */
+static void koe_say(const char *text) {
+    if (!g_koe || !text || !*text) return;
+    char clean[720];
+    koe_sanitize(text, clean, sizeof clean);
+    if (!clean[0]) return;
+    const char *voice = getenv("KOE_VOICE");
+    if (!voice || !*voice) voice = "kentaro";
+    cJSON *req = cJSON_CreateObject();
+    cJSON_AddStringToObject(req, "text", clean);
+    cJSON_AddStringToObject(req, "user_id", voice);
+    cJSON_AddStringToObject(req, "source", "cagent");
+    char *body = cJSON_PrintUnformatted(req);
+    cJSON_Delete(req);
+    Buf r = koe_post("/api/speak", body, strlen(body), "application/json");
+    free(body);
+    if (!r.data) { fprintf(stderr, "  [koe: no response]\n"); return; }
+    if (r.len && r.data[0] == '{') {              /* JSON error, not audio */
+        cJSON *e = cJSON_Parse(r.data);
+        fprintf(stderr, "  [koe: %s]\n", jstr(e, "detail") ? jstr(e, "detail") : "error");
+        cJSON_Delete(e); free(r.data); return;
+    }
+    char mp3[128];
+    snprintf(mp3, sizeof mp3, "/tmp/cagent_say_%d.mp3", getpid());
+    FILE *f = fopen(mp3, "wb");
+    if (f) { fwrite(r.data, 1, r.len, f); fclose(f); }
+    free(r.data);
+    static const char *players[] = { "afplay", "mpg123", "ffplay", NULL };
+    const char *pl = find_cmd(players);
+    if (!pl) { fprintf(stderr, "  [koe: no audio player (afplay/mpg123/ffplay)]\n"); return; }
+    char cmd[256];
+    if (!strcmp(pl, "ffplay"))
+        snprintf(cmd, sizeof cmd, "ffplay -nodisp -autoexit -loglevel quiet %s", mp3);
+    else if (!strcmp(pl, "mpg123"))
+        snprintf(cmd, sizeof cmd, "mpg123 -q %s", mp3);
+    else
+        snprintf(cmd, sizeof cmd, "afplay %s", mp3);
+    system(cmd);
+    unlink(mp3);
+}
+
+/* record from the mic until Enter (wav 16k mono). returns 0 on success */
+static int koe_record(const char *wav) {
+    static const char *recs[] = { "ffmpeg", "rec", "arecord", NULL };
+    const char *rc = find_cmd(recs);
+    if (!rc) { fprintf(stderr, "  [koe: no recorder — brew install ffmpeg or sox]\n"); return -1; }
+    fprintf(stderr, "  🎤 録音中… Enterで停止\n");
+    pid_t pid = fork();
+    if (pid == 0) {
+        int devnull = open("/dev/null", O_WRONLY);
+        if (devnull >= 0) { dup2(devnull, 2); }
+        if (!strcmp(rc, "ffmpeg"))
+            execlp("ffmpeg", "ffmpeg", "-hide_banner", "-loglevel", "error",
+                   "-f", "avfoundation", "-i", ":0", "-ac", "1", "-ar", "16000",
+                   "-y", wav, (char *)NULL);
+        else if (!strcmp(rc, "rec"))
+            execlp("rec", "rec", "-q", "-c", "1", "-r", "16000", wav, (char *)NULL);
+        else
+            execlp("arecord", "arecord", "-q", "-f", "S16_LE", "-r", "16000", "-c", "1", wav, (char *)NULL);
+        _exit(127);
+    }
+    char tmp[16];
+    if (!fgets(tmp, sizeof tmp, stdin)) { /* EOF: stop anyway */ }
+    kill(pid, SIGINT);
+    int st; waitpid(pid, &st, 0);
+    FILE *f = fopen(wav, "rb");
+    if (!f) return -1;
+    fseek(f, 0, SEEK_END);
+    long n = ftell(f);
+    fclose(f);
+    return n > 4000 ? 0 : -1;   /* <0.25s of audio = treat as failed */
+}
+
+/* mic -> koe.live STT -> heard text (malloc'd, or NULL) */
+static char *koe_listen(void) {
+    char wav[128];
+    snprintf(wav, sizeof wav, "/tmp/cagent_rec_%d.wav", getpid());
+    if (koe_record(wav) != 0) { unlink(wav); return NULL; }
+    FILE *f = fopen(wav, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END); long n = ftell(f); fseek(f, 0, SEEK_SET);
+    char *audio = malloc(n);
+    if (!audio || fread(audio, 1, n, f) != (size_t)n) { fclose(f); free(audio); unlink(wav); return NULL; }
+    fclose(f); unlink(wav);
+    Buf r = koe_post("/api/stt", audio, n, "audio/wav");
+    free(audio);
+    if (!r.data) return NULL;
+    cJSON *j = cJSON_Parse(r.data);
+    char *heard = jstr(j, "text") ? strdup(jstr(j, "text")) : NULL;
+    if (!heard) fprintf(stderr, "  [koe stt: %s]\n", jstr(j, "detail") ? jstr(j, "detail") : "failed");
+    cJSON_Delete(j); free(r.data);
+    return heard;
+}
+
+/* record once -> register your own voice on the spot (needs KOE_KEY) */
+static int koe_enroll(const char *want_id) {
+    if (!getenv("KOE_KEY") || !*getenv("KOE_KEY")) {
+        fprintf(stderr, "koe-enroll: KOE_KEY が必要です(声の登録=同意ゲート付きのアカウント機能)。\n"
+                        "koe.live でログイン/キー発行してから再実行してください。\n");
+        return 1;
+    }
+    char body[256];
+    snprintf(body, sizeof body, "{\"user_id\":\"%s\"}", want_id && *want_id ? want_id : "cagent");
+    Buf r = koe_post("/api/voice/register/start", body, strlen(body), "application/json");
+    if (!r.data) { fprintf(stderr, "koe-enroll: start failed\n"); return 1; }
+    cJSON *j = cJSON_Parse(r.data);
+    const char *token = jstr(j, "token"), *phrase = jstr(j, "phrase");
+    if (!token || !phrase) {
+        fprintf(stderr, "koe-enroll: %s\n", jstr(j, "detail") ? jstr(j, "detail") : r.data);
+        cJSON_Delete(j); free(r.data); return 1;
+    }
+    fprintf(stderr, "\n  次のお題を、そのまま声に出して読んでください:\n  「%s」\n\n", phrase);
+    char tok[128]; snprintf(tok, sizeof tok, "%s", token);
+    cJSON_Delete(j); free(r.data);
+
+    char wav[128];
+    snprintf(wav, sizeof wav, "/tmp/cagent_enroll_%d.wav", getpid());
+    if (koe_record(wav) != 0) { fprintf(stderr, "koe-enroll: 録音に失敗しました\n"); return 1; }
+
+    char b64cmd[256];
+    snprintf(b64cmd, sizeof b64cmd, "base64 < %s | tr -d '\\n'", wav);
+    FILE *bp = popen(b64cmd, "r");
+    if (!bp) { unlink(wav); return 1; }
+    size_t cap = 4 * 1024 * 1024, blen = 0;
+    char *b64 = malloc(cap);
+    blen = fread(b64, 1, cap - 1, bp);
+    b64[blen] = 0;
+    pclose(bp); unlink(wav);
+
+    cJSON *vreq = cJSON_CreateObject();
+    cJSON_AddStringToObject(vreq, "token", tok);
+    cJSON_AddStringToObject(vreq, "audio_b64", b64);
+    free(b64);
+    char *vbody = cJSON_PrintUnformatted(vreq);
+    cJSON_Delete(vreq);
+    Buf vr = koe_post("/api/voice/register/verify", vbody, strlen(vbody), "application/json");
+    free(vbody);
+    if (!vr.data) { fprintf(stderr, "koe-enroll: verify failed\n"); return 1; }
+    cJSON *vj = cJSON_Parse(vr.data);
+    const char *uid = jstr(vj, "uid");
+    if (uid) {
+        printf("✅ 声を登録しました: %s\n次からはこの声で読み上げます:\n  export KOE_VOICE=%s\n", uid, uid);
+    } else {
+        fprintf(stderr, "koe-enroll: %s\n", jstr(vj, "detail") ? jstr(vj, "detail") : vr.data);
+    }
+    int ok = uid ? 0 : 1;
+    cJSON_Delete(vj); free(vr.data);
+    return ok;
+}
+
 /* ---------- tools ---------- */
 
 static int confirm(void) {
@@ -394,6 +622,7 @@ static void agent_turn(cJSON *messages, cJSON *tools, const char *base, const ch
                 continue;
             }
             printf("%s\n", ctext ? ctext : "(empty response)");
+            if (ctext) koe_say(ctext);
             return;
         }
         if (ctext && ctext[0]) fprintf(stderr, "%s\n", ctext); /* narration */
@@ -447,11 +676,17 @@ int main(int argc, char **argv) {
     for (int i = 1; i < argc; i++) {
         if      (!strcmp(argv[i], "-y")) g_yes = 1;
         else if (!strcmp(argv[i], "-t")) g_think = 1;
+        else if (!strcmp(argv[i], "-k")) g_koe = 1;
+        else if (!strcmp(argv[i], "--koe-enroll")) {
+            const char *id = (i + 1 < argc && argv[i + 1][0] != '-') ? argv[++i] : "";
+            curl_global_init(CURL_GLOBAL_DEFAULT);
+            return koe_enroll(id);
+        }
         else if (!strcmp(argv[i], "-p") && i + 1 < argc) oneshot = argv[++i];
         else if (!strcmp(argv[i], "-m") && i + 1 < argc) model   = argv[++i];
         else if (!strcmp(argv[i], "-b") && i + 1 < argc) base    = argv[++i];
         else {
-            fprintf(stderr, "usage: agent [-p \"prompt\"] [-y] [-t] [-m model] [-b base_url]\n");
+            fprintf(stderr, "usage: agent [-p \"prompt\"] [-y] [-t] [-k] [-m model] [-b base_url] [--koe-enroll [id]]\n");
             return 1;
         }
     }
@@ -478,7 +713,8 @@ int main(int argc, char **argv) {
         push_msg(messages, "user", oneshot);
         agent_turn(messages, tools, base, model);
     } else {
-        fprintf(stderr, "cagent — %s @ %s ('exit' to quit)\n", model, base);
+        fprintf(stderr, "cagent — %s @ %s ('exit' to quit%s)\n", model, base,
+                g_koe ? ", 'v' to talk" : "");
         char line[16384];
         for (;;) {
             fprintf(stderr, "\nyou> ");
@@ -486,6 +722,15 @@ int main(int argc, char **argv) {
             line[strcspn(line, "\n")] = 0;
             if (!line[0]) continue;
             if (!strcmp(line, "exit")) break;
+            if (g_koe && !strcmp(line, "v")) {          /* voice turn */
+                char *heard = koe_listen();
+                if (!heard) continue;
+                fprintf(stderr, "  🎤 「%s」\n", heard);
+                push_msg(messages, "user", heard);
+                free(heard);
+                agent_turn(messages, tools, base, model);
+                continue;
+            }
             push_msg(messages, "user", line);
             agent_turn(messages, tools, base, model);
         }
