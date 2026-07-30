@@ -53,6 +53,16 @@ button:focus, a:focus {
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
   margin-top: 1rem;
 }
+.card {
+  background: var(--bg);
+  padding: 1rem;
+  border: 1px solid var(--fg);
+  border-radius: 8px;
+  transition: box-shadow 0.2s ease;
+}
+.card:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
 .score-bar {
   margin-top: 1rem;
 }
@@ -85,7 +95,7 @@ button:focus, a:focus {
 </header>
 <main id="main">
   <section class="hero">
-    <h2 data-i18n="intro">cagentは、C言語約434行のミニマルなコーディングエージェントです。m5 MacのローカルLLM(Qwen3.6/Nemotron)で動作し、bash/read_file/write_file/edit_fileの4ツールを利用します。</h2>
+    <h2 data-i18n="intro">cagentは、C言語457行のミニマルなコーディングエージェントです。m5 MacのローカルLLM(Qwen3.6/Nemotron)で動作し、bash/read_file/write_file/edit_fileの4ツールを利用します。</h2>
     <div class="cards">
       <div class="card" data-i18n="card1">C言語</div>
       <div class="card" data-i18n="card2">ローカルLLM</div>
@@ -107,7 +117,7 @@ const toggle = document.getElementById('lang-toggle');
 let lang = 'ja';
 const enText = {
   title: 'cagent introduction',
-  intro: 'cagent is a minimal coding agent in ~434 lines of C. It runs on local LLMs (Qwen3.6/Nemotron) with 4 tools: bash/read_file/write_file/edit_file.',
+  intro: 'cagent is a minimal coding agent in 457 lines of C. It runs on local LLMs (Qwen3.6/Nemotron) with 4 tools: bash/read_file/write_file/edit_file.',
   card1: 'C language',
   card2: 'Local LLM',
   card3: 'Simple',
@@ -115,7 +125,7 @@ const enText = {
 };
 const jaText = {
   title: 'cagent自己紹介',
-  intro: 'cagentは、C言語約434行のミニマルなコーディングエージェントです。m5 MacのローカルLLM(Qwen3.6/Nemotron)で動作し、bash/read_file/write_file/edit_fileの4ツールを利用します。',
+  intro: 'cagentは、C言語457行のミニマルなコーディングエージェントです。m5 MacのローカルLLM(Qwen3.6/Nemotron)で動作し、bash/read_file/write_file/edit_fileの4ツールを利用します。',
   card1: 'C言語',
   card2: 'ローカルLLM',
   card3: 'シンプル',

@@ -52,3 +52,6 @@ HTMLの内容を確認しました。次に、cagentの実際のコードを検�
 
   $ cat /Users/yuki/workspace/cagent/site/nemotron/index.html
   [auto-yes]
+http: Timeout was reached (retrying)
+http: Timeout was reached (retrying)
+  [llm 1496.1s in=5222 out=2184]

@@ -1,0 +1,4 @@
+http: Timeout was reached (retrying)
+http: Failure when receiving data from the peer (retrying)
+http: Couldn't connect to server (retrying)
+http: Couldn't connect to server

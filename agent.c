@@ -208,6 +208,26 @@ static cJSON *api_call(cJSON *messages, cJSON *tools, const char *base, const ch
     cJSON *out = NULL;
     cJSON *resp = cJSON_Parse(raw);
     if (resp) {
+        /* OpenAI-style error envelope: surface it plainly instead of the raw
+         * JSON dump, and point at how to unblock (a key = higher limits). */
+        cJSON *err = cJSON_GetObjectItem(resp, "error");
+        if (err && !cJSON_GetObjectItem(resp, "choices")) {
+            const char *emsg = cJSON_IsString(err) ? err->valuestring : jstr(err, "message");
+            const char *ecode = cJSON_IsObject(err) ? jstr(err, "code") : NULL;
+            fprintf(stderr, "api error: %s\n", emsg ? emsg : "unknown");
+            int limit_hit = (ecode && (strstr(ecode, "rate_limit") || strstr(ecode, "daily_limit")))
+                || (emsg && (strstr(emsg, "limit") || strstr(emsg, "上限")));
+            if (limit_hit && !getenv("AGENT_KEY") && strstr(base, "teai.io")) {
+                fprintf(stderr,
+                    "  → 無料枠の上限です。teai.io でAPIキーを取ると解除されます:\n"
+                    "      1. https://teai.io で登録 (メール+パスワード)\n"
+                    "      2. 設定画面でAPIキー(te_...)を発行\n"
+                    "      3. export AGENT_KEY=te_...   # 100+モデル・クレジット課金\n");
+            }
+            cJSON_Delete(resp);
+            free(raw);
+            return NULL;
+        }
         cJSON *choices = cJSON_GetObjectItem(resp, "choices");
         cJSON *c0      = choices ? cJSON_GetArrayItem(choices, 0) : NULL;
         cJSON *msg     = c0 ? cJSON_GetObjectItem(c0, "message") : NULL;

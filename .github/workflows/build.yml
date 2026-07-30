@@ -1,0 +1,22 @@
+name: build
+on:
+  push: { branches: [master] }
+  pull_request:
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: install libcurl (linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libcurl4-openssl-dev
+      - name: build
+        run: make
+      - name: smoke (no network — must print usage and exit non-zero)
+        run: |
+          ./agent --nonexistent-flag 2>&1 | grep -q "usage: agent" || { echo "usage text missing"; exit 1; }
+      - name: installer syntax
+        run: bash -n install.sh

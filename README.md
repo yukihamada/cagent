@@ -16,8 +16,10 @@ Qwen3.6-35B-A3B and Nemotron-Cascade-2-30B on Apple Silicon).
 AGENT_BASE=teai ./agent -y -p "bashでdateを実行して結果を教えて"
 ```
 
-- 鍵なし = フリー枠（Nemotron・IPごとの日次上限あり）
-- `AGENT_KEY=te_...`（teai.ioのAPIキー）で100+モデルのフルカタログ+クレジット残高が使える
+- 鍵なし = フリー枠（Nemotron固定・10 req/分 + 50 req/日/IP）。上限に達すると
+  cagent がキーの取り方を案内する
+- `AGENT_KEY=te_...`（teai.ioのAPIキー）で100+モデルのフルカタログ。
+  利用分はアカウントのクレジットから引かれる（Free 100 / Starter 月25,000 / Pro 30,000）
 - モデル未指定ならサーバ側オートルーター `teai/auto` に任せる（`-m` で明示指定も可）
 
 Nemotron系の推論モデルが答えを `<think>` 内に書いて黙るケースは、think内テキストを
@@ -63,6 +65,15 @@ cagent implements that loop with 4 tools — `bash`, `read_file`, `write_file`,
 That's enough to write files, compile programs, fix its own JSON mistakes,
 and even design a building (we made it model the Barcelona Pavilion on
 [bim.house](https://bim.house) via MCP-over-curl, self-judged in a loop).
+
+## Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yukihamada/cagent/master/install.sh | bash
+cagent -b teai -y -p "hello"       # 鍵なしでそのまま試せる
+```
+
+ソースを取ってきて `make` するだけのインストーラ（配布バイナリなし・依存は libcurl のみ）。
 
 ## Build & run
 
